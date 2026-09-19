@@ -1,0 +1,37 @@
+# Sweep configuration (used from Stage 1 onward).
+# Stage 1 reads every section below. Later stages reuse `sweep`, `baseline`
+# and `workloads`, and ignore `gpu` / `stage1` (those only drive the simulator).
+
+workloads: [resnet18, distilbert]
+
+# The "default" configuration every candidate is compared against.
+# power_limit_w should equal the GPU's default power limit
+# (check with: nvidia-smi -q -d POWER).
+baseline:
+  power_limit_w: 250
+  batch_size: 32
+  precision: fp32
+
+# Grid of candidate configurations.
+sweep:
+  power_limit_w: [100, 125, 150, 175, 200, 225, 250]
+  batch_size: [8, 16, 32, 64, 128, 256]
+  precision: [fp32, fp16]
+
+# Simulated GPU (Stage 1 only). Values are for a 250 W V100 PCIe;
+# use 300 for an SXM2 card. Adjust min_power_limit_w to what NVML reports.
+gpu:
+  tdp_w: 250.0
+  idle_w: 50.0
+  min_power_limit_w: 100.0
+  power_exponent: 2.5   # dynamic power ~ clock^2.5
+
+stage1:
+  seed: 42
+  num_samples: 4096        # samples processed per simulated run
+  noise_std: 0.02          # multiplicative log-normal noise on runtime
+  max_slowdown: 1.05       # runtime must be <= 1.05 x baseline runtime
+  repeats: 3               # runs per candidate (median is used)
+  baseline_repeats: 5      # runs for the baseline measurement (median)
+  strategy: grid           # grid | random
+  random_budget: 40        # number of candidates when strategy = random
