@@ -35,3 +35,15 @@ stage1:
   baseline_repeats: 5      # runs for the baseline measurement (median)
   strategy: grid           # grid | random
   random_budget: 40        # number of candidates when strategy = random
+
+# Stage 2: real GPU runs on Colab/Kaggle. Power limit cannot be changed there, so only
+# `sweep.batch_size` and `sweep.precision` are used; the limit is read and logged.
+stage2:
+  total_samples:           # inferences per timed run (same for every config of a workload)
+    resnet18: 8192         # must be divisible by every batch size
+    distilbert: 4096
+  repeats: 3               # runs per config (order is shuffled across repeats)
+  warmup_batches: 5        # untimed batches before each timed run
+  poll_interval_s: 0.05    # NVML polling interval
+  cooldown_s: 2.0          # pause between runs
+  seed: 0                  # shuffling seed

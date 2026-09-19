@@ -2,3 +2,10 @@ numpy
 matplotlib
 pyyaml
 pytest
+pandas
+# Stage 2+ (already installed on Colab, so pip will not reinstall them there)
+nvidia-ml-py
+torch
+torchvision
+transformers
+datasets
