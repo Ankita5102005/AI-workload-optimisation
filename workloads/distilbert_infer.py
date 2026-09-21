@@ -21,7 +21,12 @@ class DistilBertWorkload:
     def __init__(self, device: str = "cuda", model_name: str = MODEL_NAME,
                  max_length: int = 128, pool_size: int = 2048):
         self.device = device
-        ds = load_dataset("glue", "sst2", split=f"train[:{pool_size}]")
+        # Newer `datasets` / `huggingface_hub` require the full "namespace/name" repo id
+        # (plain "glue" now fails). Fall back to the standalone SST-2 repo if needed.
+        try:
+            ds = load_dataset("nyu-mll/glue", "sst2", split=f"train[:{pool_size}]")
+        except Exception:
+            ds = load_dataset("stanfordnlp/sst2", split=f"train[:{pool_size}]")
         tok = AutoTokenizer.from_pretrained(model_name)
         enc = tok(list(ds["sentence"]), padding="max_length", truncation=True,
                   max_length=max_length, return_tensors="pt")
