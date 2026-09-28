@@ -1,0 +1,5 @@
+index,uuid,power_default_limit_w,power_limit_w
+0,GPU-8df8975f-1cc2-b820-afae-cf42d50b4237,300.00,300.00
+1,GPU-b4df577e-ea0e-aa73-919d-5c6a96b57308,300.00,300.00
+2,GPU-74bf1b60-1863-37b0-8964-14607add0354,300.00,300.00
+3,GPU-cc5cc7bb-0b7f-9001-f39d-bf3b27d91287,300.00,300.00
