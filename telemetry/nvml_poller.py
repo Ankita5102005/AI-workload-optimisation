@@ -52,6 +52,13 @@ class NVMLReader:
     def gpu_name(self) -> str:
         return self._text(pynvml.nvmlDeviceGetName(self.handle))
 
+    def power_limit_range_w(self):
+        lo, hi = pynvml.nvmlDeviceGetPowerManagementLimitConstraints(self.handle)
+        return lo / 1000.0, hi / 1000.0
+
+    def uuid(self) -> str:
+        return self._text(pynvml.nvmlDeviceGetUUID(self.handle))
+
     def driver_version(self) -> str:
         return self._text(pynvml.nvmlSystemGetDriverVersion())
 

@@ -28,7 +28,7 @@ from telemetry.nvml_poller import NVMLPoller  # noqa: E402
 from workloads.common import CSVResultLogger, run_config  # noqa: E402
 
 
-def make_workload(name: str, device: str):
+def make_workload(name: str, device):
     if name == "resnet18":
         from workloads.resnet_infer import ResNet18Workload
         return ResNet18Workload(device)
@@ -105,11 +105,21 @@ def main() -> None:
     ap.add_argument("--repeats", type=int)
     ap.add_argument("--total-samples", type=int, help="override inferences per run for all workloads")
     ap.add_argument("--smoke", action="store_true", help="tiny run to verify the pipeline")
+    ap.add_argument("--gpu-index", type=int, default=0,
+                    help="physical GPU index (as shown by nvidia-smi) to use for BOTH the torch "
+                         "device and the matching NVML telemetry handle. On a shared multi-GPU "
+                         "box, check `nvidia-smi` first and only pick an IDLE GPU.")
+    ap.add_argument("--expect-uuid", help="GPU UUID (from `nvidia-smi -L`). If the selected GPU's UUID "
+                                          "differs, the run is refused. Strongly recommended on the shared server.")
     args = ap.parse_args()
 
     import torch
     if not torch.cuda.is_available():
         sys.exit("No CUDA GPU visible. In Colab: Runtime > Change runtime type > select a GPU.")
+    n_gpus = torch.cuda.device_count()
+    if not (0 <= args.gpu_index < n_gpus):
+        sys.exit(f"--gpu-index {args.gpu_index} is out of range: {n_gpus} GPU(s) visible (0..{n_gpus - 1}).")
+    device = f"cuda:{args.gpu_index}"
 
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
@@ -125,17 +135,27 @@ def main() -> None:
         totals = {w: 512 for w in workloads}
     configs = [(b, p) for b in batch_sizes for p in precisions]
 
-    poller = NVMLPoller(interval_s=s2["poll_interval_s"])
+    poller = NVMLPoller(device_index=args.gpu_index, interval_s=s2["poll_interval_s"])
     reader = poller.reader
     gpu_name, power_limit = reader.gpu_name(), reader.power_limit_w()
-    print(f"GPU: {gpu_name} | driver {reader.driver_version()} | power limit {power_limit:.0f} W "
-          f"(default {reader.default_power_limit_w():.0f} W) | torch {torch.__version__}")
+    print(f"GPU index {args.gpu_index}: {gpu_name} | driver {reader.driver_version()} | "
+          f"power limit {power_limit:.0f} W (default {reader.default_power_limit_w():.0f} W) | "
+          f"torch {torch.__version__} | torch device {device}")
+    if args.expect_uuid and reader.uuid() != args.expect_uuid:
+        sys.exit(f"Wrong GPU: index {args.gpu_index} has UUID {reader.uuid()}, expected {args.expect_uuid}. Refusing to run.")
+    torch_name = torch.cuda.get_device_name(args.gpu_index)
+    if torch_name != gpu_name:
+        # Should never happen without CUDA_VISIBLE_DEVICES remapping, but if it does, the run
+        # would silently measure the wrong physical GPU — refuse rather than risk that.
+        sys.exit(f"NVML reports GPU {args.gpu_index} as {gpu_name!r} but torch reports {torch_name!r}. "
+                 "Refusing to run: telemetry and compute would target different GPUs. "
+                 "Check for a CUDA_VISIBLE_DEVICES environment variable and unset it.")
     idle_w = measure_idle_power(poller)
     print(f"Idle power: {idle_w:.1f} W | {len(configs)} configs x {repeats} repeats per workload")
 
     out = Path(args.out)
     out.with_suffix(".env.json").write_text(json.dumps({
-        "gpu_name": gpu_name, "driver_version": reader.driver_version(),
+        "gpu_name": gpu_name, "gpu_uuid": reader.uuid(), "driver_version": reader.driver_version(),
         "power_limit_w": power_limit, "default_power_limit_w": reader.default_power_limit_w(),
         "idle_power_w": idle_w, "torch": torch.__version__, "cuda": torch.version.cuda,
         "total_samples": totals, "poll_interval_s": s2["poll_interval_s"],
@@ -146,7 +166,7 @@ def main() -> None:
     with CSVResultLogger(out) as logger:
         for w in workloads:
             print(f"\nLoading {w} ...")
-            wl = make_workload(w, "cuda")
+            wl = make_workload(w, device)
             all_rows += run_sweep(
                 wl, configs, poller, logger, repeats=repeats, total_samples=totals[w],
                 warmup_batches=s2["warmup_batches"], cooldown_s=cooldown,

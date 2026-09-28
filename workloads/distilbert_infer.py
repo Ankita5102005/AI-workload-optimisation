@@ -57,7 +57,9 @@ class DistilBertWorkload:
         return step
 
     def synchronize(self):
-        torch.cuda.synchronize()
+        # See the matching comment in resnet_infer.py: must name the device explicitly
+        # on a multi-GPU box, or this silently syncs the wrong GPU's stream.
+        torch.cuda.synchronize(self.device)
 
     def release(self):
         self.model = None

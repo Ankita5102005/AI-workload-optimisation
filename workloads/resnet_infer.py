@@ -49,7 +49,10 @@ class ResNet18Workload:
         return step
 
     def synchronize(self):
-        torch.cuda.synchronize()
+        # Must name the device explicitly: torch.cuda.synchronize() with no argument
+        # syncs the *current default* device, which is cuda:0 unless set_device() was
+        # called — wrong and silent on a multi-GPU box where self.device is cuda:2/3.
+        torch.cuda.synchronize(self.device)
 
     def release(self):
         self.model = None
