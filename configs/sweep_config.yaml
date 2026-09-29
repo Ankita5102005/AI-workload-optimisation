@@ -8,21 +8,22 @@ workloads: [resnet18, distilbert]
 # power_limit_w should equal the GPU's default power limit
 # (check with: nvidia-smi -q -d POWER).
 baseline:
-  power_limit_w: 250
+  power_limit_w: 300     # confirmed from `nvidia-smi -q -d POWER` on the real V100-DGXS-32GB
   batch_size: 32
   precision: fp32
 
-# Grid of candidate configurations.
+# Grid of candidate configurations. Range confirmed via
+# `nvidia-smi --query-gpu=power.min_limit,power.max_limit --format=csv` on the real card.
 sweep:
-  power_limit_w: [100, 125, 150, 175, 200, 225, 250]
+  power_limit_w: [100, 125, 150, 175, 200, 225, 250, 275, 300]
   batch_size: [8, 16, 32, 64, 128, 256]
   precision: [fp32, fp16]
 
-# Simulated GPU (Stage 1 only). Values are for a 250 W V100 PCIe;
-# use 300 for an SXM2 card. Adjust min_power_limit_w to what NVML reports.
+# Simulated GPU (Stage 1 only; not used from Stage 2 onward).
+# Values now match the real card: Tesla V100-DGXS-32GB, confirmed 100-300 W range, default/max 300 W.
 gpu:
-  tdp_w: 250.0
-  idle_w: 50.0
+  tdp_w: 300.0
+  idle_w: 37.0            # measured idle draw on the real card (Stage 3 `Idle power:` line)
   min_power_limit_w: 100.0
   power_exponent: 2.5   # dynamic power ~ clock^2.5
 
@@ -47,3 +48,12 @@ stage2:
   poll_interval_s: 0.05    # NVML polling interval
   cooldown_s: 2.0          # pause between runs
   seed: 0                  # shuffling seed
+
+# Stage 4: real power-limit control on the V100, on top of Stage 3's baseline sweep.
+# All power-limit reads/writes/restores MUST go through actuator/power_control.py exclusively.
+stage4:
+  test_values_w: [300, 275, 250, 225, 200]  # manual, one at a time, starting at default, before any automated sweep
+  stability_check:
+    batch_size: 32
+    precision: fp32
+    total_samples: 1024     # small inference to confirm the GPU still responds normally after a change
