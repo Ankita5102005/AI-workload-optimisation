@@ -13,6 +13,7 @@ CACHE="${CACHE:-$REPO/../cache}"; mkdir -p "$CACHE" "$REPO/data"
 nvidia-smi -L | grep -q "$UUID" || { echo "UUID $UUID not found on this host"; exit 1; }
 exec docker run --rm --pull=never \
   --gpus "\"device=$UUID\"" \
+  --cap-add SYS_ADMIN \
   -v "$REPO":/work -v "$PYLIBS":/pylibs:ro -v "$CACHE":/cache \
   -e PYTHONPATH=/pylibs -e HF_HOME=/cache/hf -e TORCH_HOME=/cache/torch \
   -e PYTHONDONTWRITEBYTECODE=1 \
