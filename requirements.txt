@@ -9,3 +9,5 @@ torch
 torchvision
 transformers
 datasets
+joblib
+scikit-learn
