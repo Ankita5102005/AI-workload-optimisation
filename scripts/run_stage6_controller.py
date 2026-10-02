@@ -46,7 +46,11 @@ def main() -> None:
     ap.add_argument("--expect-uuid", required=True)
     ap.add_argument("--workload", required=True, choices=["resnet18", "distilbert"])
     ap.add_argument("--n-windows", type=int, default=20)
-    ap.add_argument("--window-batches", type=int, default=50)
+    ap.add_argument("--window-samples", type=int, default=2560,
+                    help="TOTAL samples processed per window, fixed across every config regardless "
+                         "of its batch size (like Stage 2/3/4's total_samples) -- NOT a batch count. "
+                         "Must be evenly divisible by every batch size in the sweep grid. Default "
+                         "2560 is divisible by 8,16,32,64,128,256.")
     ap.add_argument("--max-slowdown", type=float, default=1.05)
     ap.add_argument("--safety-threshold", type=float, default=1.5,
                     help="ASSUMPTION: 1.5x baseline runtime triggers an immediate revert to the "
@@ -75,15 +79,15 @@ def main() -> None:
     wl = make_workload(args.workload, device)
 
     n_windows = 3 if args.smoke else args.n_windows
-    window_batches = 5 if args.smoke else args.window_batches
+    window_samples = 512 if args.smoke else args.window_samples  # 512 = divisible by the full grid too
 
-    print(f"Running controller: {n_windows} windows x {window_batches} batches, "
+    print(f"Running controller: {n_windows} windows x {window_samples} samples/window (fixed, any batch size), "
          f"max_slowdown={args.max_slowdown}x, safety_threshold={args.safety_threshold}x")
     try:
         result = run_controller(
             wl, args.workload, models, candidates, baseline,
             device_index=args.gpu_index, expect_uuid=args.expect_uuid,
-            n_windows=n_windows, window_batches=window_batches,
+            n_windows=n_windows, window_samples=window_samples,
             max_slowdown=args.max_slowdown, safety_threshold=args.safety_threshold,
         )
     finally:

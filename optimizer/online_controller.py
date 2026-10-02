@@ -91,17 +91,29 @@ def choose_config(models: dict, workload: str, candidates: List[Config],
 
 def run_controller(
     workload_obj, workload_name: str, models: dict, candidates: List[Config], baseline_config: Config,
-    *, device_index: int, expect_uuid: str, n_windows: int, window_batches: int,
+    *, device_index: int, expect_uuid: str, n_windows: int, window_samples: int,
     max_slowdown: float = 1.05, safety_threshold: float = 1.5, cooldown_s: float = 0.2,
     poller_factory: Callable[[], NVMLPoller] = None, sleep: Callable[[float], None] = time.sleep,
 ) -> ControllerResult:
+    """window_samples: TOTAL samples processed per window, fixed across every config
+    (not a batch count) -- this is what keeps window-to-window comparisons fair. A
+    config with a bigger batch size does FEWER, LARGER batches to process the same
+    window_samples, exactly like Stage 2/3/4's total_samples. It must be evenly
+    divisible by every candidate's (and the baseline's) batch_size; run_config raises
+    a clear error if not, so pick e.g. 2560 (divisible by 8,16,32,64,128,256)."""
     poller_factory = poller_factory or (lambda: NVMLPoller(device_index=device_index, interval_s=0.02))
+
+    bad = [c for c in candidates + [baseline_config] if window_samples % c.batch_size != 0]
+    if bad:
+        bad_sizes = sorted({c.batch_size for c in bad})
+        raise ValueError(f"window_samples={window_samples} is not evenly divisible by batch size(s) "
+                         f"{bad_sizes}. Pick a window_samples that is a multiple of every candidate's "
+                         f"batch size (e.g. the LCM of the sweep's batch_size list).")
 
     with PowerLimitSession(device_index, expect_uuid=expect_uuid) as session:
         session.set_w(baseline_config.power_limit_w)
-        base_samples = window_batches * baseline_config.batch_size
         base_res = run_config(workload_obj, baseline_config.batch_size, baseline_config.precision,
-                              base_samples, poller_factory(), warmup_batches=2,
+                              window_samples, poller_factory(), warmup_batches=2,
                               power_limit_w=baseline_config.power_limit_w)
         baseline_runtime = base_res.runtime_s
         logger.info("Baseline measured fresh this run: %.3fs at %s", baseline_runtime, baseline_config)
@@ -114,8 +126,7 @@ def run_controller(
         for w in range(n_windows):
             if current.power_limit_w != session.current_w():
                 session.set_w(current.power_limit_w)
-            n_samples = window_batches * current.batch_size
-            res = run_config(workload_obj, current.batch_size, current.precision, n_samples,
+            res = run_config(workload_obj, current.batch_size, current.precision, window_samples,
                              poller_factory(), warmup_batches=1, power_limit_w=current.power_limit_w)
             slowdown = res.runtime_s / baseline_runtime
             label = classify(Signals(res.avg_gpu_util, res.avg_mem_util))

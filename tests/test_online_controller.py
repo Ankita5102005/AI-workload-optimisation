@@ -85,12 +85,24 @@ def test_choose_config_falls_back_when_nothing_meets_constraint():
     assert chosen == impossible[0]  # falls back rather than raising
 
 
+def test_run_controller_rejects_window_samples_not_divisible_by_a_batch_size(fake_nvml, tmp_path):
+    wl = SlowWorkload()
+    baseline = Config(300, 32, "fp32")
+    with pytest.raises(ValueError, match="not evenly divisible"):
+        run_controller(
+            wl, "fake", MODELS, CANDIDATES, baseline, device_index=0, expect_uuid=fake_nvml.uuid,
+            n_windows=1, window_samples=100,  # 100 is not divisible by batch size 256 in CANDIDATES
+            poller_factory=poller_factory, sleep=lambda s: None,
+        )
+    assert fake_nvml.limit_w == 300.0  # rejected before touching anything
+
+
 def test_run_controller_restores_power_and_produces_one_row_per_window(fake_nvml, tmp_path):
     wl = SlowWorkload()
     baseline = Config(300, 32, "fp32")
     result = run_controller(
         wl, "fake", MODELS, CANDIDATES, baseline, device_index=0, expect_uuid=fake_nvml.uuid,
-        n_windows=3, window_batches=2, max_slowdown=1.05, safety_threshold=1.5, cooldown_s=0,
+        n_windows=3, window_samples=1280, max_slowdown=1.05, safety_threshold=1.5, cooldown_s=0,
         poller_factory=poller_factory, sleep=lambda s: None,
     )
     assert len(result.windows) == 3
@@ -113,7 +125,7 @@ def test_safety_watchdog_reverts_on_a_genuinely_slow_window(fake_nvml, tmp_path)
     baseline = Config(300, 32, "fp32")
     result = run_controller(
         wl, "fake", MODELS, CANDIDATES, baseline, device_index=0, expect_uuid=fake_nvml.uuid,
-        n_windows=3, window_batches=2, max_slowdown=1.05, safety_threshold=1.5, cooldown_s=0,
+        n_windows=3, window_samples=1280, max_slowdown=1.05, safety_threshold=1.5, cooldown_s=0,
         poller_factory=poller_factory, sleep=lambda s: None,
     )
     assert any(w.safety_triggered for w in result.windows)
