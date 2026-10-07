@@ -6,3 +6,7 @@ env/
 results/
 *.pt
 *.pth
+
+# Trained models are environment-specific (scikit-learn version): always retrain on the
+# machine/container that will load them, never ship them through git.
+predictor/model_artifacts/*.joblib

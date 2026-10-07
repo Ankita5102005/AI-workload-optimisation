@@ -17,13 +17,13 @@ import sys
 from dataclasses import asdict
 from pathlib import Path
 
-import joblib
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from optimizer.online_controller import run_controller  # noqa: E402
+from predictor.model_io import load_models  # noqa: E402
 from optimizer.search import Config, grid_candidates  # noqa: E402
 
 
@@ -66,10 +66,10 @@ def main() -> None:
     with open(args.config) as f:
         cfg = yaml.safe_load(f)
 
-    models = {
-        "runtime": joblib.load(Path(args.models_dir) / "runtime_model.joblib"),
-        "energy": joblib.load(Path(args.models_dir) / "energy_model.joblib"),
-    }
+    try:
+        models = load_models(args.models_dir)
+    except RuntimeError as e:
+        sys.exit(f"ERROR: {e}")
 
     candidates = grid_candidates(cfg["sweep"])
     baseline = Config(**cfg["baseline"])

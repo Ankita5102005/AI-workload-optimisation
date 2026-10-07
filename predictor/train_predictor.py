@@ -24,6 +24,7 @@ Outputs:
   predictor/model_artifacts/runtime_model.joblib
   predictor/model_artifacts/energy_model.joblib
   predictor/model_artifacts/metrics.json
+  predictor/model_artifacts/meta.json   (scikit-learn version the models were trained with)
   predictor/model_artifacts/pred_vs_actual.png
 """
 
@@ -31,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 
 import joblib
@@ -45,6 +47,9 @@ from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score  #
 from sklearn.model_selection import GroupKFold, cross_val_predict  # noqa: E402
 from sklearn.pipeline import Pipeline  # noqa: E402
 from sklearn.preprocessing import OneHotEncoder  # noqa: E402
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from predictor.model_io import write_meta  # noqa: E402
 
 FEATURES_CAT = ["workload", "precision"]
 FEATURES_NUM = ["power_limit_w", "batch_size"]
@@ -136,6 +141,8 @@ def main() -> None:
 
     with open(out_dir / "metrics.json", "w") as f:
         json.dump(metrics, f, indent=2)
+    meta = write_meta(out_dir)  # records scikit-learn version so a mismatched load fails clearly
+    print(f"Recorded scikit-learn {meta['sklearn_version']} in {out_dir}/meta.json")
     print(f"\nSaved models, metrics, and plot to {out_dir}/")
 
 
