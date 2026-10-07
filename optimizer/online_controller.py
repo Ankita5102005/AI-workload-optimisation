@@ -32,7 +32,7 @@ from typing import Callable, List, Optional
 import pandas as pd
 
 from actuator.power_control import PowerLimitSession
-from characterizer.classify_workload import Signals, classify, narrow_candidates
+from characterizer.classify_workload import BALANCED, Signals, classify, narrow_candidates
 from optimizer.search import Config
 from telemetry.nvml_poller import NVMLPoller
 from workloads.common import run_config
@@ -99,7 +99,12 @@ def run_controller(
     *, device_index: int, expect_uuid: str, n_windows: int, window_samples: int,
     max_slowdown: float = 1.05, safety_threshold: float = 1.5, cooldown_s: float = 0.2,
     poller_factory: Callable[[], NVMLPoller] = None, sleep: Callable[[float], None] = time.sleep,
+    use_characterizer: bool = True,
 ) -> ControllerResult:
+    """use_characterizer=False runs the ablation the project plan recommends "where time
+    allows": every window is treated as BALANCED (no narrowing by utilization signal),
+    so candidates considered = the full grid every time. Compare its ControllerResult
+    against a normal run to show whether the characterizer is actually contributing."""
     """window_samples: TOTAL samples processed per window, fixed across every config
     (not a batch count) -- this is what keeps window-to-window comparisons fair. A
     config with a bigger batch size does FEWER, LARGER batches to process the same
@@ -134,7 +139,7 @@ def run_controller(
             res = run_config(workload_obj, current.batch_size, current.precision, window_samples,
                              poller_factory(), warmup_batches=1, power_limit_w=current.power_limit_w)
             slowdown = res.runtime_s / baseline_runtime
-            label = classify(Signals(res.avg_gpu_util, res.avg_mem_util))
+            label = classify(Signals(res.avg_gpu_util, res.avg_mem_util)) if use_characterizer else BALANCED
 
             safety_triggered = slowdown > safety_threshold
             reverted = False

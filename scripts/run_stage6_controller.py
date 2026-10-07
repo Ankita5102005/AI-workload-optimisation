@@ -58,6 +58,9 @@ def main() -> None:
                          "the normal 1.05x constraint but doesn't fix a number -- override this "
                          "if you want something different.")
     ap.add_argument("--smoke", action="store_true", help="tiny run: 3 windows of 5 batches, to verify the pipeline")
+    ap.add_argument("--no-characterizer", action="store_true",
+                    help="ablation: disable the workload characterizer (every window treated as "
+                         "balanced -> no candidate narrowing), to compare against a normal run")
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -89,6 +92,7 @@ def main() -> None:
             device_index=args.gpu_index, expect_uuid=args.expect_uuid,
             n_windows=n_windows, window_samples=window_samples,
             max_slowdown=args.max_slowdown, safety_threshold=args.safety_threshold,
+            use_characterizer=not args.no_characterizer,
         )
     finally:
         wl.release()
@@ -96,7 +100,7 @@ def main() -> None:
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "w", newline="") as f:
-        fields = ["window", "config", "label", "actual_runtime_s", "actual_energy_j",
+        fields = ["window", "workload", "window_samples", "config", "label", "actual_runtime_s", "actual_energy_j",
                  "predicted_runtime_s", "predicted_energy_j", "slowdown_vs_baseline",
                  "safety_triggered", "reverted_to_baseline"]
         w = csv.DictWriter(f, fieldnames=fields)
@@ -104,6 +108,8 @@ def main() -> None:
         for row in result.windows:
             d = asdict(row)
             d["config"] = row.config.label()
+            d["workload"] = args.workload
+            d["window_samples"] = window_samples
             w.writerow(d)
 
     print(f"\nBaseline: {result.baseline_runtime_s:.3f}s at {result.baseline_config.label()}")
