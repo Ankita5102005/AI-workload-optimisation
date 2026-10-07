@@ -31,9 +31,16 @@ import pandas as pd
 
 KEEP_COLUMNS = [
     "workload", "power_limit_w", "batch_size", "precision",
-    "runtime_s", "energy_j", "avg_power_w", "throughput_sps",
+    "runtime_s", "energy_j", "total_samples", "avg_power_w", "throughput_sps",
     "avg_gpu_util", "avg_mem_util", "avg_sm_clock_mhz", "avg_mem_clock_mhz",
 ]
+# total_samples is kept specifically so the predictor can be trained on PER-SAMPLE
+# runtime/energy (see train_predictor.py) rather than absolute values. The source
+# sweeps all used one fixed total_samples per workload (e.g. 8192 for resnet18), so
+# a model trained on absolute runtime_s/energy_j implicitly bakes in that one sample
+# count and silently mispredicts for any other window size -- confirmed for real: the
+# Stage 6 online controller uses a different total_samples per window than the
+# sweeps did, and its predictions were off by almost exactly that ratio.
 
 
 def _load_one(path: Path, power_col: str = "power_limit_w") -> pd.DataFrame:

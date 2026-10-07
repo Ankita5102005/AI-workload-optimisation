@@ -66,9 +66,12 @@ def poller_factory():
 
 
 def test_predict_and_choose_config_picks_lowest_energy_within_constraint():
-    preds = predict(MODELS, "fake", CANDIDATES)
+    # window_samples=1: MODELS' lambdas represent PER-SAMPLE predictions, so this
+    # reproduces the original (pre-fix) absolute-value test expectations unchanged.
+    preds = predict(MODELS, "fake", CANDIDATES, window_samples=1)
     assert len(preds) == len(CANDIDATES)
-    chosen, row = choose_config(MODELS, "fake", CANDIDATES, baseline_runtime_s=2.0, max_slowdown=1.05)
+    chosen, row = choose_config(MODELS, "fake", CANDIDATES, baseline_runtime_s=2.0,
+                                max_slowdown=1.05, window_samples=1)
     assert row["predicted_runtime_s"] <= 1.05 * 2.0 + 1e-9
     # among valid candidates, this should be the lowest predicted energy
     valid = [c for c in CANDIDATES if MODELS["runtime"].fn(
@@ -81,8 +84,18 @@ def test_predict_and_choose_config_picks_lowest_energy_within_constraint():
 
 def test_choose_config_falls_back_when_nothing_meets_constraint():
     impossible = [Config(300, 8, "fp32")]  # predicted runtime will exceed any tiny baseline
-    chosen, row = choose_config(MODELS, "fake", impossible, baseline_runtime_s=0.0001, max_slowdown=1.05)
+    chosen, row = choose_config(MODELS, "fake", impossible, baseline_runtime_s=0.0001,
+                                max_slowdown=1.05, window_samples=1)
     assert chosen == impossible[0]  # falls back rather than raising
+
+
+def test_predict_scales_linearly_with_window_samples():
+    # the whole point of the fix: doubling window_samples must exactly double the
+    # absolute prediction, since the underlying model is per-sample.
+    p1 = predict(MODELS, "fake", CANDIDATES[:1], window_samples=100)
+    p2 = predict(MODELS, "fake", CANDIDATES[:1], window_samples=200)
+    assert p2["predicted_runtime_s"].iloc[0] == pytest.approx(2 * p1["predicted_runtime_s"].iloc[0])
+    assert p2["predicted_energy_j"].iloc[0] == pytest.approx(2 * p1["predicted_energy_j"].iloc[0])
 
 
 def test_run_controller_rejects_window_samples_not_divisible_by_a_batch_size(fake_nvml, tmp_path):

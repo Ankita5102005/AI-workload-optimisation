@@ -65,25 +65,30 @@ class ControllerResult:
         return [w for w in self.windows if w.safety_triggered]
 
 
-def predict(models: dict, workload: str, configs: List[Config]) -> pd.DataFrame:
-    """models: {'runtime': fitted_pipeline, 'energy': fitted_pipeline} from Stage 5.
-    Returns a DataFrame, one row per config, with predicted_runtime_s/predicted_energy_j."""
+def predict(models: dict, workload: str, configs: List[Config], window_samples: int) -> pd.DataFrame:
+    """models: {'runtime': fitted_pipeline, 'energy': fitted_pipeline} from Stage 5, trained on
+    PER-SAMPLE targets (see train_predictor.py). Multiplying by window_samples here converts
+    back to an ABSOLUTE prediction for THIS window's actual sample count -- the predictor
+    itself is scale-invariant, so this is what makes predictions comparable to the window's
+    actual measured runtime/energy regardless of how big window_samples is. Returns a
+    DataFrame, one row per config, with predicted_runtime_s/predicted_energy_j."""
     X = pd.DataFrame([{"workload": workload, "precision": c.precision,
                        "power_limit_w": c.power_limit_w, "batch_size": c.batch_size} for c in configs])
-    X["predicted_runtime_s"] = models["runtime"].predict(X[["workload", "precision", "power_limit_w", "batch_size"]])
-    X["predicted_energy_j"] = models["energy"].predict(X[["workload", "precision", "power_limit_w", "batch_size"]])
+    cols = ["workload", "precision", "power_limit_w", "batch_size"]
+    X["predicted_runtime_s"] = models["runtime"].predict(X[cols]) * window_samples
+    X["predicted_energy_j"] = models["energy"].predict(X[cols]) * window_samples
     X["config"] = configs
     return X
 
 
 def choose_config(models: dict, workload: str, candidates: List[Config],
-                  baseline_runtime_s: float, max_slowdown: float) -> tuple[Config, pd.Series]:
+                  baseline_runtime_s: float, max_slowdown: float, window_samples: int) -> tuple[Config, pd.Series]:
     """Picks the lowest-predicted-energy candidate whose PREDICTED runtime is within
     max_slowdown x baseline. Falls back to the first candidate (never crashes) if
     every prediction exceeds the limit -- that candidate will likely be rejected by
     the ACTUAL slowdown check next window and the safety watchdog will catch it if
     it's genuinely bad; logging that fallback clearly is the caller's job."""
-    preds = predict(models, workload, candidates)
+    preds = predict(models, workload, candidates, window_samples)
     valid = preds[preds["predicted_runtime_s"] <= max_slowdown * baseline_runtime_s]
     row = (valid if len(valid) else preds).sort_values("predicted_energy_j").iloc[0]
     return row["config"], row
@@ -140,7 +145,8 @@ def run_controller(
                 reverted = True
             else:
                 narrowed = narrow_candidates(label, candidates)
-                next_config, row = choose_config(models, workload_name, narrowed, baseline_runtime, max_slowdown)
+                next_config, row = choose_config(models, workload_name, narrowed, baseline_runtime,
+                                                 max_slowdown, window_samples)
                 next_pred_runtime, next_pred_energy = row["predicted_runtime_s"], row["predicted_energy_j"]
 
             result.windows.append(WindowResult(

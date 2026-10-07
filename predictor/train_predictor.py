@@ -1,6 +1,16 @@
-"""Stage 5: train gradient-boosted regressors predicting runtime and energy
-from (workload, power limit, batch size, precision) -- so Stage 6's controller
-can evaluate a candidate config without running it first.
+"""Stage 5: train gradient-boosted regressors predicting PER-SAMPLE runtime and
+energy from (workload, power limit, batch size, precision) -- so Stage 6's
+controller can evaluate a candidate config, AT WHATEVER TOTAL SAMPLE COUNT IT
+ACTUALLY USES, without running it first.
+
+Targets are runtime_per_sample_s and energy_per_sample_j (runtime_s / total_samples,
+energy_j / total_samples), NOT the absolute runtime_s / energy_j. This matters: the
+source sweeps all used one fixed total_samples per workload, so a model trained on
+absolute values implicitly bakes in that one sample count and silently mispredicts
+for any other window size -- this broke the Stage 6 controller for real (predictions
+were off by ~3.2x, matching the ratio between the sweep's total_samples and the
+controller's window size, almost exactly). Per-sample targets are scale-invariant:
+the caller multiplies by however many samples their window actually processes.
 
 Inputs are ONLY what's known before a config is actually run: workload,
 power_limit_w, batch_size, precision. GPU utilization/clock columns in the
@@ -38,7 +48,14 @@ from sklearn.preprocessing import OneHotEncoder  # noqa: E402
 
 FEATURES_CAT = ["workload", "precision"]
 FEATURES_NUM = ["power_limit_w", "batch_size"]
-TARGETS = ["runtime_s", "energy_j"]
+TARGETS = ["runtime_per_sample_s", "energy_per_sample_j"]
+
+
+def add_per_sample_targets(df: pd.DataFrame) -> pd.DataFrame:
+    df = df.copy()
+    df["runtime_per_sample_s"] = df["runtime_s"] / df["total_samples"]
+    df["energy_per_sample_j"] = df["energy_j"] / df["total_samples"]
+    return df
 
 
 def build_pipeline(seed: int = 0) -> Pipeline:
@@ -78,9 +95,13 @@ def main() -> None:
     args = ap.parse_args()
 
     df = pd.read_csv(args.data)
-    missing = [c for c in FEATURES_CAT + FEATURES_NUM + TARGETS if c not in df.columns]
+    required = FEATURES_CAT + FEATURES_NUM + ["runtime_s", "energy_j", "total_samples"]
+    missing = [c for c in required if c not in df.columns]
     if missing:
-        raise SystemExit(f"Input data is missing columns: {missing}")
+        raise SystemExit(f"Input data is missing columns: {missing}. If this is an older "
+                         f"consolidated file, re-run predictor/consolidate.py (total_samples "
+                         f"is now required -- see that file's changelog note).")
+    df = add_per_sample_targets(df)
     print(f"Loaded {len(df)} rows from {args.data}")
 
     out_dir = Path(args.out_dir)
@@ -100,7 +121,8 @@ def main() -> None:
         # above, not this model's own training error, is what tells you its real accuracy.
         final_model = build_pipeline(args.seed)
         final_model.fit(df[FEATURES_CAT + FEATURES_NUM], df[target])
-        joblib.dump(final_model, out_dir / f"{'runtime' if target=='runtime_s' else 'energy'}_model.joblib")
+        name = "runtime" if target == "runtime_per_sample_s" else "energy"
+        joblib.dump(final_model, out_dir / f"{name}_model.joblib")
 
         y = df[target].values
         ax.scatter(y, cv_pred, s=14, alpha=0.5)
