@@ -1,0 +1,40 @@
+[
+  {
+    "workload": "distilbert",
+    "default_runtime_s": 1.0151493679586565,
+    "default_energy_j": 292.4950105684871,
+    "best_found_config": "150W/bs256/fp16",
+    "best_found_runtime_s": 0.31541329644824145,
+    "best_found_energy_j": 46.985489637738105,
+    "best_found_energy_saving_pct": 83.93631072666227,
+    "best_found_runtime_overhead_pct": -68.92937075038526,
+    "proposed_config": "150W/bs256/fp16",
+    "proposed_runtime_s": 0.2996664581587538,
+    "proposed_energy_j": 46.898143344226234,
+    "proposed_energy_saving_pct": 83.96617321674103,
+    "proposed_runtime_overhead_pct": -70.48055511659854,
+    "proposed_n_windows": 19,
+    "proposed_n_safety_events": 0,
+    "proposed_mean_abs_pred_runtime_error_pct": 2.9268234513414715,
+    "proposed_mean_abs_pred_energy_error_pct": 2.1594571765103927
+  },
+  {
+    "workload": "resnet18",
+    "default_runtime_s": 0.26058571484099957,
+    "default_energy_j": 67.90874308512585,
+    "best_found_config": "150W/bs256/fp16",
+    "best_found_runtime_s": 0.13981774736748775,
+    "best_found_energy_j": 21.04640317570299,
+    "best_found_energy_saving_pct": 69.00781516553674,
+    "best_found_runtime_overhead_pct": -46.34481500538135,
+    "proposed_config": "150W/bs256/fp16",
+    "proposed_runtime_s": 0.13541651860577983,
+    "proposed_energy_j": 21.463356622597235,
+    "proposed_energy_saving_pct": 68.39382434793086,
+    "proposed_runtime_overhead_pct": -48.03379045992359,
+    "proposed_n_windows": 19,
+    "proposed_n_safety_events": 0,
+    "proposed_mean_abs_pred_runtime_error_pct": 7.68713405131358,
+    "proposed_mean_abs_pred_energy_error_pct": 3.7261049173744363
+  }
+]
